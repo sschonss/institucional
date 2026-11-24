@@ -125,6 +125,38 @@ describe("/auth/callback", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/membro"));
   });
 
+  it("return do check-in com event key (dois-pontos na query) é preservado", async () => {
+    const replace = stubLocation({ search: "?status=success", hash: "#token=jwt-1" });
+    const returnTo = "/admin/eventos-checkin?event=external:meetup:devparana:evt-1";
+    stubSessionStorage({ [RETURN_KEY]: returnTo });
+    stubFetch();
+
+    render(<AuthCallback />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(returnTo));
+  });
+
+  it("return com internal: na query do check-in é preservado", async () => {
+    const replace = stubLocation({ search: "?status=success", hash: "#token=jwt-1" });
+    const returnTo = "/admin/eventos-checkin?event=internal:f61aad40-8d23-4833-afcf-2ad020027bdf";
+    stubSessionStorage({ [RETURN_KEY]: returnTo });
+    stubFetch();
+
+    render(<AuthCallback />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(returnTo));
+  });
+
+  it("pathname com esquema (javascript:) continua rejeitado", async () => {
+    const replace = stubLocation({ search: "?status=success", hash: "#token=jwt-1" });
+    stubSessionStorage({ [RETURN_KEY]: "/javascript:alert(1)" });
+    stubFetch();
+
+    render(<AuthCallback />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/membro"));
+  });
+
   it("status=success sem token mas com sessão → redireciona normalmente", async () => {
     const replace = stubLocation({ search: "?status=success" });
     stubSessionStorage();
