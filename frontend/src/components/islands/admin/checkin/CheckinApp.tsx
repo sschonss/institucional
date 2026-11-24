@@ -6,7 +6,7 @@
  * `PageContainer` (o h1 fica na topbar do AppLayout — aqui começa em h2).
  *
  * Internos e externos filtram e paginam no backend. Deep-link
- * `?event=<id|external:<eventKey>>` pré-seleciona o evento.
+ * `?event=<id|internal:<id>|external:<eventKey>>` pré-seleciona o evento.
  * A câmera exige HTTPS (mkcert local — ver DEVELOPMENT.md).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -65,8 +65,26 @@ function certificateFilterFromSearch(value: string | null): CertificateFilter {
     : "all";
 }
 
+const INTERNAL_PREFIX = "internal:";
+
+/** Resolve `?event=` para o valor do seletor (id cru ou `external:<eventKey>`). */
+function eventSelectionFromQuery(
+  fromQuery: string,
+  manageable: ManagedEvent[],
+  externals: ExternalActivationItem[],
+): string | null {
+  if (fromQuery.startsWith(EXTERNAL_PREFIX)) {
+    const eventKey = fromQuery.slice(EXTERNAL_PREFIX.length);
+    return externals.some((activation) => activation.eventKey === eventKey) ? fromQuery : null;
+  }
+  const internalId = fromQuery.startsWith(INTERNAL_PREFIX)
+    ? fromQuery.slice(INTERNAL_PREFIX.length)
+    : fromQuery;
+  return manageable.some((event) => event.id === internalId) ? internalId : null;
+}
+
 function CheckinInner(): React.JSX.Element {
-  const { ready, isLoggedIn, authFetch } = useAuth();
+  const { ready, isLoggedIn, login, authFetch } = useAuth();
   const [initialQuery] = useState(() => new URLSearchParams(window.location.search));
   const initialFilterApplied = useRef(false);
   const initialTabApplied = useRef(false);
@@ -155,7 +173,10 @@ function CheckinInner(): React.JSX.Element {
   useEffect(() => {
     if (!ready) return;
     if (!isLoggedIn) {
-      window.location.replace("/");
+      // Sem login o deep link (?event=external:… / internal:…) se perdia no
+      // redirect para a home, e o retorno do OAuth descartava a query por causa
+      // dos dois-pontos. O login devolve a pessoa para esta mesma URL.
+      login({ returnTo: `${window.location.pathname}${window.location.search}` });
       return;
     }
     void (async () => {
@@ -179,19 +200,14 @@ function CheckinInner(): React.JSX.Element {
         );
         setExternalActivations(externals);
 
-        // Seletor via query string: /admin/eventos-checkin?event=<id|external:<eventKey>>
+        // Seletor via query string: /admin/eventos-checkin?event=<id|internal:<id>|external:<eventKey>>
         const params = new URLSearchParams(
           typeof window === "undefined" ? "" : window.location.search,
         );
         const fromQuery = params.get("event");
         if (fromQuery) {
-          const isValidExternal =
-            fromQuery.startsWith(EXTERNAL_PREFIX) &&
-            externals.some((a) => a.eventKey === fromQuery.slice(EXTERNAL_PREFIX.length));
-          const isValidInternal = manageable.some((e) => e.id === fromQuery);
-          if (isValidExternal || isValidInternal) {
-            setSelectedEventId(fromQuery);
-          }
+          const selection = eventSelectionFromQuery(fromQuery, manageable, externals);
+          if (selection) setSelectedEventId(selection);
         }
       } catch {
         setLoadError("Erro inesperado ao carregar eventos.");
@@ -199,7 +215,7 @@ function CheckinInner(): React.JSX.Element {
         setEventsLoading(false);
       }
     })();
-  }, [ready, isLoggedIn, authFetch]);
+  }, [ready, isLoggedIn, authFetch, login]);
 
   // Carrega a primeira página e os contadores locais ao trocar de evento
   useEffect(() => {

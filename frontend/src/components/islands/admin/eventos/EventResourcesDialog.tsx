@@ -107,7 +107,7 @@ export default function EventResourcesDialog({
             <Button
               size="small"
               variant="text"
-              href={`/admin/eventos-checkin?event=${encodeURIComponent(`internal:${row.event.id}`)}`}
+              href={`/admin/eventos-checkin?event=${encodeURIComponent(row.event.id)}`}
               sx={{ alignSelf: "flex-start" }}
             >
               Abrir check-in e certificados existentes

@@ -24,6 +24,7 @@ const authState = vi.hoisted(() => ({
   isLoggedIn: false,
   isAdmin: false,
   authFetch: vi.fn(),
+  login: vi.fn(),
 }));
 
 vi.mock("../../../../../lib/use-auth", () => ({
@@ -33,6 +34,7 @@ vi.mock("../../../../../lib/use-auth", () => ({
     isLoggedIn: authState.isLoggedIn,
     isAdmin: authState.isAdmin,
     authFetch: authState.authFetch,
+    login: authState.login,
   }),
 }));
 
@@ -224,6 +226,37 @@ describe("/admin/eventos-checkin", () => {
   });
 
   // ── Acesso / autorização ─────────────────────────────────────────────────
+
+  it("visitante entra pelo GitHub e volta para o check-in do evento", () => {
+    authState.user = null;
+    authState.ready = true;
+    authState.isLoggedIn = false;
+    authState.login.mockClear();
+    window.history.pushState(
+      {},
+      "",
+      "/admin/eventos-checkin?event=external:meetup:devparana:evt-1",
+    );
+
+    renderWithMui(<CheckinApp />);
+
+    expect(authState.login).toHaveBeenCalledWith({
+      returnTo: "/admin/eventos-checkin?event=external:meetup:devparana:evt-1",
+    });
+  });
+
+  it("aceita ?event=internal:<id> e pré-seleciona o evento", async () => {
+    const authFetch = mockAuthFetchWithEvents(noRegistrations);
+    mockAuthFor(organizerUser, authFetch);
+    window.history.pushState({}, "", "/admin/eventos-checkin?event=internal:evt-1");
+
+    renderWithMui(<CheckinApp />);
+
+    await waitForRegistrationsList();
+    expect(authFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/events/evt-1/registrations"),
+    );
+  });
 
   it("membro autenticado sem escopo não recebe dados de participantes", async () => {
     const authFetch = vi.fn(async (url: string) => {

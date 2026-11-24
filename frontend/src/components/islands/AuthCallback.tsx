@@ -1,24 +1,32 @@
 import { useEffect, useState } from "react";
-import { API_URL } from "../../lib/config";
+import { resolveApiUrl } from "../../lib/api-url";
 import { COMMUNITY_KEY, fetchMe, RETURN_KEY } from "../../lib/auth-client";
 
 // Paridade com o Docusaurus (src/pages/auth/callback.tsx): após o login o
 // destino padrão é a Área do Membro.
 const DEFAULT_RETURN = "/membro";
+const RETURN_PATH_BASE = "https://codaqui.invalid";
 
 type Status = "processing" | "error";
 
-/** Valida que o destino é um path relativo (anti open-redirect). */
+/**
+ * Valida que o destino é um path relativo do site (anti open-redirect).
+ * Dois-pontos são proibidos no pathname (`javascript:`, URLs absolutas), mas
+ * permitidos na query: o check-in usa `?event=external:…` e `?event=internal:…`.
+ */
 function safeReturnPath(value: string | null): string {
-  if (
-    !value ||
-    !value.startsWith("/") ||
-    value.startsWith("//") ||
-    value.includes(":")
-  ) {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
     return DEFAULT_RETURN;
   }
-  return value;
+  let url: URL;
+  try {
+    url = new URL(value, RETURN_PATH_BASE);
+  } catch {
+    return DEFAULT_RETURN;
+  }
+  if (url.origin !== RETURN_PATH_BASE) return DEFAULT_RETURN;
+  if (!url.pathname.startsWith("/") || url.pathname.includes(":")) return DEFAULT_RETURN;
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 /** Lê o destino salvo, limpa as chaves de auth e valida (anti open-redirect). */
@@ -33,6 +41,7 @@ export default function AuthCallback() {
   const [status, setStatus] = useState<Status>("processing");
 
   useEffect(() => {
+    const apiUrl = resolveApiUrl(import.meta.env.SITE);
     const run = async () => {
       const params = new URLSearchParams(window.location.search);
       const statusParam = params.get("status");
@@ -46,7 +55,7 @@ export default function AuthCallback() {
       // real (o backend sempre inclui ?status=success). Acesso direto ou
       // refresh da página sem esse param cai no else (verifica sessão).
       if (statusParam !== "success") {
-        const profile = await fetchMe(API_URL);
+        const profile = await fetchMe(apiUrl);
         if (profile) {
           window.location.replace(consumeReturnPath());
         } else {
@@ -70,7 +79,7 @@ export default function AuthCallback() {
           window.location.pathname + window.location.search,
         );
         try {
-          const res = await fetch(`${API_URL}/auth/finalize`, {
+          const res = await fetch(`${apiUrl}/auth/finalize`, {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
@@ -86,7 +95,7 @@ export default function AuthCallback() {
         }
       }
 
-      const me = await fetchMe(API_URL);
+      const me = await fetchMe(apiUrl);
       if (!me) {
         setStatus("error");
         return;
